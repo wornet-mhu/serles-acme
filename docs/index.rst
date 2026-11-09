@@ -191,6 +191,19 @@ installation path.
   work-dir=/local/acme/certbot/work
   logs-dir=/local/acme/certbot/logs
 
+Serles waits for certbot to finish while the client's finalize request is
+pending. To bound how long a single certbot run (e.g. one stuck waiting for a
+DNS validation) may take, set ``certbot.timeout`` to a number of seconds. On
+timeout, certbot receives SIGTERM, so it can remove its challenge records and
+lock files, and SIGKILL only if it has not exited 30 seconds later. Keep the
+timeout plus these 30 seconds below the worker timeout of your WSGI server
+(e.g. gunicorn's ``timeout``), otherwise the worker is aborted first.
+
+.. code-block:: ini
+
+  [certbot]
+  timeout = 240
+
 
 Dependencies
 ------------
