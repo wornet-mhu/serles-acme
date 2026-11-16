@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# packaging (pip install -e ., setup.py build/sdist)
+*.egg-info/
+build/
+dist/
+
+# tests and coverage (see tests/Makefile)
+.pytest_cache/
+.coverage
+htmlcov/
+
+# virtual environments
+.venv/
+venv/
+
+# local config and database, if kept in the checkout
+config.ini
+*.sqlite
+*.db
