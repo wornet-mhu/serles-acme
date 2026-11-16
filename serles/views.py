@@ -1,7 +1,7 @@
 import jwcrypto.jwk  # fedora package: python3-jwcrypto.noarch
 import jwcrypto.jws
 
-from flask import g, make_response
+from flask import current_app, g, make_response
 from flask_restful import Resource, Api
 
 from .utils import base64d
@@ -15,12 +15,15 @@ from .models import (
     ChallengeTypes,
     Identifier,
     IdentifierTypes,
+    IssuanceJob,
     Order,
     OrderStatus,
 )
 from .challenge import verify_challenge
-from .certificate import check_csr_and_return_cert
+from .certificate import check_csr, check_csr_and_return_cert
+from .configloader import get_config
 from .exceptions import ACMEError
+from . import issuance
 
 api = Api()
 
@@ -254,6 +257,8 @@ class OrderMain(Resource):
             raise ACMEError("Order does not exist", 404, "malformed")
         if not order.account_id == g.kid:
             raise ACMEError("Unexpected Account ID", 403, "unauthorized")
+        if order.status == OrderStatus.processing:  # RFC8555 §7.4
+            return order.serialized, 200, {"Retry-After": str(issuance.RETRY_AFTER)}
         return order.serialized
 
 
@@ -274,6 +279,24 @@ class OrderFinalize(Resource):
             raise ACMEError("Unexpected Account ID", 403, "unauthorized")
         if order.status != OrderStatus.ready:
             raise ACMEError("", 403, "orderNotReady")
+
+        config, _ = get_config()
+        if config["asyncFinalize"]:
+            # check the CSR now, sign in the background; the client polls the
+            # order until it is valid or invalid (RFC8555 §7.4).
+            sign_args = check_csr(csr, order)
+            order.status = OrderStatus.processing
+            db.session.add(IssuanceJob(order_id=order.id))
+            db.session.commit()
+            issuance.submit(current_app._get_current_object(), order.id, sign_args)
+            return (
+                order.serialized,
+                200,
+                {
+                    "Location": api.url_for(OrderMain, orderid=order.id, _external=True),
+                    "Retry-After": str(issuance.RETRY_AFTER),
+                },
+            )
 
         certificate = check_csr_and_return_cert(csr, order)
 

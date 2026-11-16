@@ -57,6 +57,27 @@ class ConfigFunctionTester(unittest.TestCase):
             self.assertEqual(config["allowedServerIpRanges"], None)
             self.assertEqual(config["excludeServerIpRanges"], None)
             self.assertEqual(config["verifyPTR"], False)
+            self.assertEqual(config["asyncFinalize"], False)
+
+    def test_configparser_asyncfinalize(self):
+        for value, expected in ((b"true", True), (b"false", False), (b"x", None)):
+            with tempfile.NamedTemporaryFile() as f:
+                f.write(b"[serles]\n")
+                f.write(b"database=sqlite:///:memory:\n")
+                f.write(b"backend=MockBackend\n")
+                f.write(b"subjectNameTemplate=x\n")
+                f.write(b"asyncFinalize=" + value + b"\n")
+                f.flush()
+                if expected is None:
+                    self.assertRaisesRegex(
+                        ConfigError,
+                        "asyncFinalize",
+                        main.configloader.load_config_and_backend,
+                        f.name,
+                    )
+                else:
+                    config, _ = main.configloader.load_config_and_backend(f.name)
+                    self.assertEqual(config["asyncFinalize"], expected)
 
     def test_configparser_wrongvalue(self):
         with tempfile.NamedTemporaryFile() as f:

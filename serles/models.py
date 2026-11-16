@@ -297,6 +297,23 @@ class Account(db.Model):  # RFC8555 §7.1.2
         # fmt: on
 
 
+class IssuanceJob(db.Model):
+    """
+    Bookkeeping for asynchronous finalization (`asyncFinalize`): exists while
+    an Order is `processing`. It lets us detect orders whose issuance was
+    interrupted (e.g. the server was killed) so they don't stay `processing`
+    forever. This is a separate table (rather than columns on Order), because
+    `create_all()` adds missing tables to existing databases, but not missing
+    columns.
+    """
+
+    order_id = db.Column(db.String(45), db.ForeignKey("order.id"), primary_key=True)
+    # when the job was queued, and reset when the backend starts working on it
+    since = db.Column(
+        UTCDateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class Nonces(db.Model):
     """
     To avoid replay attacks, each HTTP POST request must come with a nonce we

@@ -76,6 +76,28 @@ example configuration file is included as ``config.ini.example``. You may copy
 (and rename) it to the beforementioned location. Serles is compatible with any
 WSGI server; please consult your server's manual for its configuration.
 
+Asynchronous finalization
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, Serles calls the backend while the client's finalize request is
+pending. With slow backends (like certbot, which performs its own validation
+against another CA), this can exceed the client's request timeout (certbot
+gives up after 45 seconds), and it blocks the server meanwhile.
+
+With ``asyncFinalize = true`` in the ``[serles]`` section, the finalize request
+only checks the CSR and returns the order with status ``processing`` and a
+``Retry-After`` header. The backend is called in a background thread, and the
+client polls the order until it is ``valid`` or ``invalid`` (RFC 8555 §7.4).
+Clients only poll for a limited time, too; for certbot, raise
+``--issuance-timeout`` (default: 90 seconds) if issuance may take longer.
+
+Orders are signed one at a time per server process. When the server shuts down,
+a running issuance is completed (as long as the WSGI server waits for it, e.g.
+gunicorn's ``graceful_timeout``); queued ones fail with a "please retry" error.
+If an issuance is interrupted nevertheless (e.g. the server is killed), its
+order is set to ``invalid`` once the backend's maximum runtime plus 30 seconds
+has passed (600 seconds for backends without a ``max_runtime``, see below).
+
 Backends
 --------
 
@@ -112,6 +134,10 @@ A backend is simply a class (no inheritance required) and has the following meth
           self.config = config
       def sign(self, csr, subjectDN, subjectAltNames, email):
           return None, "not implemented"
+
+A backend may also define an attribute ``max_runtime``: the number of seconds
+a ``sign()`` call can take at most (or ``None`` if unlimited). It is used to
+detect interrupted issuances with ``asyncFinalize``.
 
 Optionally, one can also inherit from the abstract ``serles.backends.base``:
 
@@ -191,13 +217,15 @@ installation path.
   work-dir=/local/acme/certbot/work
   logs-dir=/local/acme/certbot/logs
 
-Serles waits for certbot to finish while the client's finalize request is
-pending. To bound how long a single certbot run (e.g. one stuck waiting for a
+Without ``asyncFinalize``, Serles waits for certbot to finish while the
+client's finalize request is pending. To bound how long a single certbot run (e.g. one stuck waiting for a
 DNS validation) may take, set ``certbot.timeout`` to a number of seconds. On
 timeout, certbot receives SIGTERM, so it can remove its challenge records and
 lock files, and SIGKILL only if it has not exited 30 seconds later. Keep the
 timeout plus these 30 seconds below the worker timeout of your WSGI server
-(e.g. gunicorn's ``timeout``), otherwise the worker is aborted first.
+(e.g. gunicorn's ``timeout``), otherwise the worker is aborted first. With
+``asyncFinalize``, the timeout also determines when an interrupted issuance is
+given up on (``max_runtime`` is the timeout plus 30 seconds).
 
 .. code-block:: ini
 

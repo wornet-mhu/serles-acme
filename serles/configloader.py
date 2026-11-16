@@ -140,4 +140,9 @@ def load_config_and_backend(filename):
     except ValueError:
         raise ConfigError("[serles]allowIpIdentifiers= must be 'true' or 'false'") from None
 
+    try:
+        config["asyncFinalize"] = cparser["serles"].getboolean("asyncFinalize", fallback=False)
+    except ValueError:
+        raise ConfigError("[serles]asyncFinalize= must be 'true' or 'false'") from None
+
     return config, backend

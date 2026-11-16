@@ -164,6 +164,14 @@ class CertbotBackendTester(unittest.TestCase):
                 config = dict(certbot=dict(config="x", timeout=value))
                 self.assertEqual(CertbotBackend.Backend(config).timeout, expected)
 
+    def test_max_runtime(self):
+        p1, p2, p3 = self.patched(fake_popen())
+        with p1, p2, p3:
+            backend = CertbotBackend.Backend(dict(certbot=dict(config="x", timeout="240")))
+            self.assertEqual(backend.max_runtime, 240 + backend.terminate_grace)
+            backend = CertbotBackend.Backend(dict(certbot=dict(config="x")))
+            self.assertIsNone(backend.max_runtime)
+
     def test_timeout_config_invalid(self):
         for value in ("0", "-5", "abc", ""):
             p1, p2, p3 = self.patched(fake_popen())

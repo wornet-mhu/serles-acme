@@ -6,6 +6,7 @@ from .configloader import get_config
 from .views import api # Note: import views before models!
 from .models import db, Nonces, Order
 from .exceptions import ACMEError
+from . import issuance
 from .flask_handlers import parse_jws, inject_nonce, index_header, exception_handler
 
 
@@ -14,7 +15,7 @@ def create_app():
 
     This function should be passed to the WSGI server.
     """
-    config, _ = get_config()
+    config, backend = get_config()
 
     app = Flask(__name__)
     app.config["PROPAGATE_EXCEPTIONS"] = True  # makes @app.errorhandler handle events
@@ -35,6 +36,12 @@ def create_app():
     def purge_nonces():
         with app.app_context():
             Nonces.purge_expired()
+
+    if config["asyncFinalize"]:
+        @background_job(60)  # fail orders whose issuance was interrupted
+        def fail_stale_issuances():
+            with app.app_context():
+                issuance.fail_stale(backend)
 
     @background_job(24 * 60 * 60)  # once daily, remove expired Orders
     def purge_orders():

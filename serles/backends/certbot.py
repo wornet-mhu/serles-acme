@@ -118,6 +118,13 @@ class Backend:
         if not os.access(self.path, os.X_OK):
             raise Exception(f"certbot '{self.path}' not executable")
 
+    @property
+    def max_runtime(self):
+        """ seconds a sign() call can take at most (None: unlimited) """
+        if self.timeout is None:
+            return None
+        return self.timeout + self.terminate_grace
+
     def sign(self, csr, subjectDN, subjectAltNames, email):
         with tempfile.TemporaryDirectory(prefix="serles-certbot") as tmpdir:
 

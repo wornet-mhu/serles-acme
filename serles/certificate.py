@@ -25,7 +25,27 @@ def check_csr_and_return_cert(csr_der, order):
     Raises:
         ACMEError: CSR was rejected (by us) or the backend refused to sign it.
     """
-    config, backend = get_config()
+    return sign_csr(*check_csr(csr_der, order))
+
+
+def check_csr(csr_der, order):
+    """ validate CSR against the order
+
+    Checks that the CSR only contains domains from previously validated
+    challenges. This is the fast part of finalization; it is kept separate from
+    sign_csr() so it can run synchronously even when signing does not.
+
+    Args:
+        csr_der (bytes): client's CSR in DER encoding
+        order (Order): the order object that the CSR belongs to
+
+    Returns:
+        tuple: arguments for sign_csr() (csr_pem, subject_dn, alt_names, email).
+
+    Raises:
+        ACMEError: CSR was rejected.
+    """
+    config, _ = get_config()
 
     csr = x509.load_der_x509_csr(csr_der)
     try:
@@ -73,6 +93,26 @@ def check_csr_and_return_cert(csr_der, order):
     subject_dn = csr.subject.rfc4514_string()
     if config["forceTemplateDN"] or not subject_dn:
         subject_dn = config["subjectNameTemplate"].format(SAN=alt_names, MAIL=email)
+
+    return csr_pem, subject_dn, alt_names, email
+
+
+def sign_csr(csr_pem, subject_dn, alt_names, email):
+    """ pass a checked CSR to the backend
+
+    Args:
+        csr_pem (bytes): CSR in PEM encoding, as returned by check_csr().
+        subject_dn (str): subject DN for the certificate.
+        alt_names (list): subject alternative names.
+        email (str): contact email address of the account, or None.
+
+    Returns:
+        bytes: the signed certificate and chain in PEM format.
+
+    Raises:
+        ACMEError: the backend refused to sign the CSR.
+    """
+    config, backend = get_config()
 
     certificate, error = backend.sign(csr_pem, subject_dn, alt_names, email)
 

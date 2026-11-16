@@ -44,6 +44,17 @@ forceTemplateDN = true
 # certificate chains. Cross-signed roots are not removed by this option.
 removeRootCAFromChain = false
 
+# Finalize orders asynchronously: the finalize request only checks the CSR and
+# returns the order as "processing"; the backend signs in the background, and
+# the client polls the order until it is "valid" or "invalid" (RFC 8555 §7.4).
+# Useful with slow backends (e.g. certbot), as clients abort a single request
+# after a short time (certbot: 45 seconds). Clients also stop polling after a
+# while (certbot: --issuance-timeout, default 90 seconds).
+# Orders whose issuance was interrupted (e.g. the server was killed) are set to
+# invalid once the backend's maximum runtime (certbot: timeout + 30 seconds)
+# plus 30 seconds has passed, or after 600 seconds if it has no limit.
+asyncFinalize = false
+
 # Backend configuration depends on the loaded backend. You will only need the
 # section corresponding to the backend enabled above; others can be removed.
 
@@ -114,7 +125,8 @@ config =
 # certbot is sent SIGTERM (so it can remove its challenge records and lock
 # files) and, if it has not exited 30 seconds later, SIGKILL. The client then
 # receives an error. If unset, certbot may run indefinitely.
-# When running under gunicorn, keep this plus the 30 seconds grace period below
+# Without asyncFinalize, keep this plus the 30 seconds grace period below
 # gunicorn's worker timeout, or gunicorn will abort the worker (and the
-# request) first.
+# request) first. In any case, keep it below gunicorn's graceful_timeout, so a
+# shutdown waits for a running certbot instead of killing it.
 #timeout = 240
